@@ -1,0 +1,66 @@
+name: sglang-s2-streaming-api
+
+services:
+  api:
+    image: ${SGLANG_OMNI_IMAGE:-frankleeeee/sglang-omni:dev}
+    container_name: sglang-s2-streaming-api
+    entrypoint: ["/bin/bash", "/workspace/entrypoint.sh"]
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-7782}:8888"
+    volumes:
+      - ./app:/workspace/app:ro
+      - ./config:/workspace/config:ro
+      - ./entrypoint.sh:/workspace/entrypoint.sh:ro
+      - ${DATA_DIR:-./data}:/data
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8888
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+      HF_ENDPOINT: ${HF_ENDPOINT:-https://huggingface.co}
+      PYTORCH_CUDA_ALLOC_CONF: ${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}
+      FLASHINFER_DISABLE_VERSION_CHECK: "${FLASHINFER_DISABLE_VERSION_CHECK:-1}"
+      TORCHINDUCTOR_MAX_AUTOTUNE: "${TORCHINDUCTOR_MAX_AUTOTUNE:-1}"
+      S2_MODEL_PATH: ${S2_MODEL_PATH:-/data/checkpoints/s2-pro}
+      S2_MODEL_NAME: ${S2_MODEL_NAME:-fishaudio-s2-streaming}
+      S2_CONFIG_PATH: ${S2_CONFIG_PATH:-/workspace/config/s2pro_streaming.yaml}
+      S2_REFERENCE_ROOT: ${S2_REFERENCE_ROOT:-/data/references}
+      S2_MANAGE_BACKEND: "${S2_MANAGE_BACKEND:-true}"
+      S2_BACKEND_URL: ${S2_BACKEND_URL:-http://127.0.0.1:8092}
+      S2_BACKEND_HOST: ${S2_BACKEND_HOST:-127.0.0.1}
+      S2_BACKEND_PORT: "${S2_BACKEND_PORT:-8092}"
+      S2_BACKEND_LOG_LEVEL: ${S2_BACKEND_LOG_LEVEL:-info}
+      SGL_OMNI_BIN: ${SGL_OMNI_BIN:-sgl-omni}
+      S2_STARTUP_TIMEOUT: "${S2_STARTUP_TIMEOUT:-2400}"
+      S2_REQUEST_TIMEOUT: "${S2_REQUEST_TIMEOUT:-3600}"
+      S2_CONNECT_TIMEOUT: "${S2_CONNECT_TIMEOUT:-30}"
+      S2_WARMUP: "${S2_WARMUP:-true}"
+      S2_WARMUP_REQUESTS: "${S2_WARMUP_REQUESTS:-1}"
+      S2_WARMUP_MAX_NEW_TOKENS: "${S2_WARMUP_MAX_NEW_TOKENS:-32}"
+      S2_WARMUP_TEXT: ${S2_WARMUP_TEXT:-Warm up the low latency streaming path.}
+      S2_TARGET_FIRST_BYTE_MS: "${S2_TARGET_FIRST_BYTE_MS:-200}"
+      S2_EARLY_WAV_HEADER: "${S2_EARLY_WAV_HEADER:-true}"
+      S2_TEXT_CHUNKING: "${S2_TEXT_CHUNKING:-true}"
+      S2_FIRST_CHUNK_WORDS: "${S2_FIRST_CHUNK_WORDS:-5}"
+      S2_CHUNK_WORDS: "${S2_CHUNK_WORDS:-7}"
+      S2_JOIN_SILENCE_MS: "${S2_JOIN_SILENCE_MS:-20}"
+      S2_STREAM_SAMPLE_RATE: "${S2_STREAM_SAMPLE_RATE:-44100}"
+      S2_STREAM_CHANNELS: "${S2_STREAM_CHANNELS:-1}"
+      S2_STREAM_BITS_PER_SAMPLE: "${S2_STREAM_BITS_PER_SAMPLE:-16}"
+      S2_TEMPERATURE: "${S2_TEMPERATURE:-0.8}"
+      S2_TOP_P: "${S2_TOP_P:-0.8}"
+      S2_TOP_K: "${S2_TOP_K:-30}"
+      S2_REPETITION_PENALTY: "${S2_REPETITION_PENALTY:-1.1}"
+      S2_SEED: "${S2_SEED:-}"
+      S2_MAX_NEW_TOKENS: "${S2_MAX_NEW_TOKENS:-1024}"
+      S2_SPEED: "${S2_SPEED:-1.0}"
+      S2_EXTRA_ARGS: ${S2_EXTRA_ARGS:-}
+    gpus: all
+    shm_size: ${SHM_SIZE:-32g}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8888/healthz', timeout=5).read()\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: ${HEALTHCHECK_START_PERIOD:-2400s}

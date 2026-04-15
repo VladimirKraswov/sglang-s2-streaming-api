@@ -1,0 +1,42 @@
+config_cls: S2ProPipelineConfig
+name: fishaudio-s2-streaming
+model_path: fishaudio/s2-pro
+entry_stage: preprocessing
+relay_backend: shm
+stages:
+  - name: preprocessing
+    executor:
+      factory: sglang_omni.models.fishaudio_s2_pro.pipeline.stages.create_preprocessing_executor
+      args: {}
+    get_next: sglang_omni.models.fishaudio_s2_pro.pipeline.next_stage.preprocessing_next
+    relay:
+      device: cpu
+      slot_size_mb: 512
+      credits: 2
+
+  - name: tts_engine
+    executor:
+      factory: sglang_omni.models.fishaudio_s2_pro.pipeline.stages.create_sglang_tts_engine_executor
+      args:
+        device: cuda:0
+        max_new_tokens: 2048
+        top_k: 30
+        stream_stride: 4
+        stream_followup_stride: 20
+        stream_vocoder_device: cpu
+    get_next: sglang_omni.models.fishaudio_s2_pro.pipeline.next_stage.tts_engine_next
+    relay:
+      device: cuda
+      slot_size_mb: 512
+      credits: 2
+
+  - name: vocoder
+    executor:
+      factory: sglang_omni.models.fishaudio_s2_pro.pipeline.stages.create_vocoder_executor
+      args:
+        device: cuda
+    get_next: sglang_omni.models.fishaudio_s2_pro.pipeline.next_stage.vocoder_next
+    relay:
+      device: cpu
+      slot_size_mb: 512
+      credits: 2
