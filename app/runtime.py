@@ -342,7 +342,9 @@ class StreamingRuntime:
             "top_p": self.settings.top_p,
             "top_k": self.settings.top_k,
             "repetition_penalty": self.settings.repetition_penalty,
-            "ttfa_text_chunking": False,
+            "ttfa_text_chunking": self.settings.text_chunking_enabled,
+            "first_chunk_words": self.settings.first_chunk_words,
+            "chunk_words": self.settings.chunk_words,
         }
         seen_audio = False
         for index in range(self.settings.warmup_requests):
