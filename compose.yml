@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        BASE_IMAGE: ${SGLANG_OMNI_IMAGE:-frankleeeee/sglang-omni:dev}
+        BASE_IMAGE: ${SGLANG_OMNI_IMAGE:-lmsysorg/sglang:nightly-dev-20260414-c456cba7}
     image: ${LOCAL_IMAGE:-sglang-s2-streaming-api:local}
     container_name: sglang-s2-streaming-api
     entrypoint: ["/bin/bash", "/workspace/entrypoint.sh"]
@@ -25,6 +25,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
       HF_ENDPOINT: ${HF_ENDPOINT:-https://huggingface.co}
+      PYTORCH_ALLOC_CONF: ${PYTORCH_ALLOC_CONF:-expandable_segments:True}
       PYTORCH_CUDA_ALLOC_CONF: ${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}
       FLASHINFER_DISABLE_VERSION_CHECK: "${FLASHINFER_DISABLE_VERSION_CHECK:-1}"
       TORCHINDUCTOR_MAX_AUTOTUNE: "${TORCHINDUCTOR_MAX_AUTOTUNE:-1}"
@@ -37,7 +38,7 @@ services:
       S2_BACKEND_HOST: ${S2_BACKEND_HOST:-127.0.0.1}
       S2_BACKEND_PORT: "${S2_BACKEND_PORT:-8092}"
       S2_BACKEND_LOG_LEVEL: ${S2_BACKEND_LOG_LEVEL:-info}
-      SGL_OMNI_BIN: ${SGL_OMNI_BIN:-sgl-omni}
+      SGLANG_OMNI_BIN: ${SGLANG_OMNI_BIN:-sgl-omni}
       S2_STARTUP_TIMEOUT: "${S2_STARTUP_TIMEOUT:-2400}"
       S2_REQUEST_TIMEOUT: "${S2_REQUEST_TIMEOUT:-3600}"
       S2_CONNECT_TIMEOUT: "${S2_CONNECT_TIMEOUT:-30}"

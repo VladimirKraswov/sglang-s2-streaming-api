@@ -43,8 +43,8 @@ class Settings:
     backend_host: str
     backend_port: int
     backend_log_level: str
-    sgl_omni_bin: str
-    sgl_omni_extra_args: str
+    sglang_omni_bin: str
+    sglang_omni_extra_args: str
     startup_timeout: int
     request_timeout: int
     connect_timeout: int
@@ -75,11 +75,13 @@ class Settings:
 
     flashinfer_disable_version_check: bool
     torchinductor_max_autotune: bool
+    pytorch_alloc_conf: str
     pytorch_cuda_alloc_conf: str
 
     def backend_command(self) -> list[str]:
+        launcher = shlex.split(self.sglang_omni_bin.strip()) if self.sglang_omni_bin.strip() else ["sgl-omni"]
         command = [
-            self.sgl_omni_bin,
+            *launcher,
             "serve",
             "--model-path",
             self.model_path,
@@ -94,8 +96,8 @@ class Settings:
             "--log-level",
             self.backend_log_level,
         ]
-        if self.sgl_omni_extra_args.strip():
-            command.extend(shlex.split(self.sgl_omni_extra_args))
+        if self.sglang_omni_extra_args.strip():
+            command.extend(shlex.split(self.sglang_omni_extra_args))
         return command
 
 
@@ -104,6 +106,10 @@ def load_settings() -> Settings:
     backend_port = _int_env("S2_BACKEND_PORT", 8092)
     backend_url = os.getenv("S2_BACKEND_URL", f"http://{backend_host}:{backend_port}").rstrip("/")
     seed = os.getenv("S2_SEED") or os.getenv("SEED")
+
+    sglang_omni_bin = os.getenv("SGLANG_OMNI_BIN")
+    if not sglang_omni_bin:
+        sglang_omni_bin = os.getenv("SGL_OMNI_BIN", "sgl-omni")
 
     return Settings(
         host=os.getenv("HOST", "0.0.0.0"),
@@ -118,8 +124,8 @@ def load_settings() -> Settings:
         backend_host=backend_host,
         backend_port=backend_port,
         backend_log_level=os.getenv("S2_BACKEND_LOG_LEVEL", "info"),
-        sgl_omni_bin=os.getenv("SGL_OMNI_BIN", "sgl-omni"),
-        sgl_omni_extra_args=os.getenv("S2_EXTRA_ARGS", ""),
+        sglang_omni_bin=sglang_omni_bin,
+        sglang_omni_extra_args=os.getenv("S2_EXTRA_ARGS", ""),
         startup_timeout=_int_env("S2_STARTUP_TIMEOUT", 2400),
         request_timeout=_int_env("S2_REQUEST_TIMEOUT", 3600),
         connect_timeout=_int_env("S2_CONNECT_TIMEOUT", 30),
@@ -145,5 +151,6 @@ def load_settings() -> Settings:
         speed=_float_env("S2_SPEED", 1.0),
         flashinfer_disable_version_check=_bool_env("FLASHINFER_DISABLE_VERSION_CHECK", True),
         torchinductor_max_autotune=_bool_env("TORCHINDUCTOR_MAX_AUTOTUNE", True),
+        pytorch_alloc_conf=os.getenv("PYTORCH_ALLOC_CONF", "expandable_segments:True"),
         pytorch_cuda_alloc_conf=os.getenv("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True"),
     )

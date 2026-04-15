@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=lmsysorg/sglang:nightly-dev-cu13-20260414-c456cba7
+ARG BASE_IMAGE=lmsysorg/sglang:nightly-dev-20260414-c456cba7
 FROM ${BASE_IMAGE}
 
 ENV PYTHONUNBUFFERED=1 \

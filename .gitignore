@@ -5,6 +5,6 @@ data/
 output*.wav
 *.log
 
-bundle_code.js
+bundle-code.js
 .codebundleignore
 codebundle.txt
