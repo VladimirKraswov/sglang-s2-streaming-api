@@ -29,6 +29,7 @@ profile:
 
 check:
 	PYTHONPYCACHEPREFIX=/tmp/sglang-s2-streaming-pycache $(PYTHON) -m py_compile $$(find app tools -name '*.py')
+	$(PYTHON) -m unittest discover -s tests
 	bash -n entrypoint.sh
 	$(COMPOSE) -f compose.yml config >/dev/null
 

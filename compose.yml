@@ -2,9 +2,15 @@ name: sglang-s2-streaming-api
 
 services:
   api:
-    image: ${SGLANG_OMNI_IMAGE:-frankleeeee/sglang-omni:dev}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${SGLANG_OMNI_IMAGE:-frankleeeee/sglang-omni:dev}
+    image: ${LOCAL_IMAGE:-sglang-s2-streaming-api:local}
     container_name: sglang-s2-streaming-api
     entrypoint: ["/bin/bash", "/workspace/entrypoint.sh"]
+    init: true
     restart: unless-stopped
     ports:
       - "${API_PORT:-7782}:8888"
@@ -38,7 +44,7 @@ services:
       S2_WARMUP: "${S2_WARMUP:-true}"
       S2_WARMUP_REQUESTS: "${S2_WARMUP_REQUESTS:-1}"
       S2_WARMUP_MAX_NEW_TOKENS: "${S2_WARMUP_MAX_NEW_TOKENS:-32}"
-      S2_WARMUP_TEXT: ${S2_WARMUP_TEXT:-Warm up the low latency streaming path.}
+      S2_WARMUP_TEXT: "${S2_WARMUP_TEXT:-Warm up the low latency streaming path.}"
       S2_TARGET_FIRST_BYTE_MS: "${S2_TARGET_FIRST_BYTE_MS:-200}"
       S2_EARLY_WAV_HEADER: "${S2_EARLY_WAV_HEADER:-true}"
       S2_TEXT_CHUNKING: "${S2_TEXT_CHUNKING:-true}"
@@ -55,7 +61,7 @@ services:
       S2_SEED: "${S2_SEED:-}"
       S2_MAX_NEW_TOKENS: "${S2_MAX_NEW_TOKENS:-1024}"
       S2_SPEED: "${S2_SPEED:-1.0}"
-      S2_EXTRA_ARGS: ${S2_EXTRA_ARGS:-}
+      S2_EXTRA_ARGS: "${S2_EXTRA_ARGS:-}"
     gpus: all
     shm_size: ${SHM_SIZE:-32g}
     healthcheck:

@@ -1,24 +1,28 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
 import logging
 import os
-import re
 import subprocess
 import time
-from pathlib import Path
 from typing import Any, AsyncIterator
 
 import httpx
 
 from .audio import pcm_payload, silence_pcm, streaming_wav_header, wav_info
+from .payloads import (
+    FORWARDED_REQUEST_FIELDS,
+    ensure_wav_response_format,
+    payload_value,
+    request_text,
+    split_for_ttfa,
+)
+from .references import build_references
 from .settings import Settings
+from .sse import decode_sse_audio, sse_data
 
 logger = logging.getLogger(__name__)
-
-AUDIO_EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg", ".opus", ".m4a", ".aac"}
 
 
 class StreamingRuntime:
@@ -48,12 +52,14 @@ class StreamingRuntime:
                 if self.settings.warmup_enabled:
                     await self._warmup()
                 self._ready = True
+                self._error = ""
             except Exception as exc:
                 self._error = str(exc)
                 logger.exception("Streaming runtime startup failed")
                 await self._close_client()
                 if self.settings.manage_backend:
                     await self._stop_backend()
+                raise
 
     async def shutdown(self) -> None:
         async with self._lock:
@@ -64,7 +70,9 @@ class StreamingRuntime:
     async def status(self) -> dict[str, Any]:
         ready, detail = await self._backend_ready()
         self._ready = ready
-        if detail:
+        if ready:
+            self._error = ""
+        elif detail:
             self._error = detail
         return {
             "ready": ready,
@@ -187,15 +195,14 @@ class StreamingRuntime:
 
         if response.status_code >= 400:
             detail = await self._async_error_detail(response)
+            self._ready = False
+            self._error = detail
             await response.aclose()
             raise RuntimeError(detail)
         return response
 
     def stream_payloads(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
-        text = str(payload.get("input") or payload.get("text") or "").strip()
-        if not text:
-            raise ValueError("Text must not be empty")
-
+        text = request_text(payload)
         enabled = bool(payload_value(payload, "ttfa_text_chunking", self.settings.text_chunking_enabled))
         first_words = int(payload_value(payload, "first_chunk_words", self.settings.first_chunk_words))
         chunk_words = int(payload_value(payload, "chunk_words", self.settings.chunk_words))
@@ -225,14 +232,8 @@ class StreamingRuntime:
         return rows
 
     def build_backend_request(self, payload: dict[str, Any], *, stream: bool) -> dict[str, Any]:
-        text = str(payload.get("input") or payload.get("text") or "").strip()
-        if not text:
-            raise ValueError("Text must not be empty")
-
-        response_format = str(payload_value(payload, "response_format", "wav")).lower().strip()
-        if response_format != "wav":
-            raise ValueError("Only response_format='wav' is supported")
-
+        text = request_text(payload)
+        ensure_wav_response_format(payload)
         request: dict[str, Any] = {
             "model": payload.get("model") or self.settings.model_name,
             "input": text,
@@ -253,12 +254,12 @@ class StreamingRuntime:
         if seed is not None:
             request["seed"] = int(seed)
 
-        for key in ("language", "instructions", "task_type", "stage_params"):
+        for key in FORWARDED_REQUEST_FIELDS:
             value = payload.get(key)
             if value is not None:
                 request[key] = value
 
-        references = self._build_references(payload)
+        references = build_references(payload, self.settings.reference_root)
         if references:
             request["references"] = references
 
@@ -382,85 +383,6 @@ class StreamingRuntime:
             pool=self.settings.connect_timeout,
         )
 
-    def _build_references(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
-        references: list[dict[str, Any]] = []
-
-        reference_id = str(payload.get("reference_id") or "").strip()
-        if reference_id:
-            references.append(self._saved_reference(reference_id))
-
-        ref_audio = payload.get("ref_audio")
-        if ref_audio:
-            ref_text = str(payload.get("ref_text") or "").strip()
-            if not ref_text:
-                raise ValueError("ref_text is required when ref_audio is provided")
-            references.append({"audio_path": str(ref_audio), "text": ref_text})
-
-        raw_refs = payload.get("references") or []
-        if not isinstance(raw_refs, list):
-            raise ValueError("references must be a list")
-
-        for item in raw_refs:
-            if not isinstance(item, dict):
-                raise ValueError("Each reference must be an object")
-
-            item_reference_id = str(item.get("reference_id") or "").strip()
-            if item_reference_id:
-                references.append(self._saved_reference(item_reference_id))
-                continue
-
-            vq_codes = item.get("vq_codes")
-            text = str(item.get("text") or item.get("transcript") or item.get("ref_text") or "").strip()
-            if vq_codes is not None:
-                references.append({"vq_codes": vq_codes, "text": text})
-                continue
-
-            audio_path = (
-                item.get("audio_path")
-                or item.get("ref_audio")
-                or item.get("audio_url")
-                or item.get("url")
-                or item.get("audio")
-            )
-            if audio_path is None:
-                raise ValueError("Reference must include audio_path/ref_audio/audio_url/url/audio or vq_codes")
-            if not text:
-                raise ValueError("Reference must include text/transcript/ref_text")
-
-            audio_value = str(audio_path).strip()
-            if audio_value.startswith("data:"):
-                raise ValueError("References must use local paths, HTTP URLs, or vq_codes; data URLs are not supported")
-            references.append({"audio_path": audio_value, "text": text})
-
-        return references
-
-    def _saved_reference(self, reference_id: str) -> dict[str, str]:
-        reference_dir = self.settings.reference_root / reference_id
-        if not reference_dir.exists():
-            raise ValueError(f"Reference does not exist: {reference_id}")
-
-        transcript_path = reference_dir / "sample.lab"
-        if not transcript_path.exists():
-            raise ValueError(f"Reference transcript does not exist: {reference_id}")
-        transcript = transcript_path.read_text(encoding="utf-8", errors="replace").strip()
-        if not transcript:
-            raise ValueError(f"Reference transcript is empty: {reference_id}")
-
-        audio_path = reference_dir / "sample.wav"
-        if not audio_path.exists():
-            audio_path = next(
-                (
-                    path
-                    for path in sorted(reference_dir.iterdir())
-                    if path.is_file() and path.suffix.lower() in AUDIO_EXTENSIONS
-                ),
-                None,
-            )
-        if audio_path is None:
-            raise ValueError(f"Reference audio does not exist: {reference_id}")
-
-        return {"audio_path": str(audio_path), "text": transcript}
-
     @staticmethod
     async def _async_error_detail(response: httpx.Response) -> str:
         content = await response.aread()
@@ -469,44 +391,3 @@ class StreamingRuntime:
             return str(data.get("detail") or data)
         except Exception:
             return content.decode("utf-8", errors="replace") or f"Upstream returned {response.status_code}"
-
-
-def payload_value(payload: dict[str, Any], key: str, default: Any) -> Any:
-    value = payload.get(key)
-    return default if value is None else value
-
-
-def split_for_ttfa(text: str, *, first_words: int, chunk_words: int) -> list[str]:
-    compact = re.sub(r"\s+", " ", text).strip()
-    if not compact:
-        return []
-
-    words = compact.split(" ")
-    if len(words) <= first_words + 2:
-        return [compact]
-
-    chunks = [" ".join(words[:first_words])]
-    rest = words[first_words:]
-    for pos in range(0, len(rest), chunk_words):
-        chunks.append(" ".join(rest[pos : pos + chunk_words]))
-    return [chunk for chunk in chunks if chunk]
-
-
-def sse_data(line: str) -> str | None:
-    if not line or not line.startswith("data:"):
-        return None
-    return line[len("data:") :].strip()
-
-
-def decode_sse_audio(data: str) -> bytes | None:
-    if data == "[DONE]":
-        return None
-    try:
-        payload = json.loads(data)
-    except json.JSONDecodeError:
-        return None
-    audio = payload.get("audio") or {}
-    b64 = audio.get("data") if isinstance(audio, dict) else None
-    if not b64:
-        return None
-    return base64.b64decode(b64)
