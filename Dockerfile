@@ -19,7 +19,7 @@ RUN python -m pip install --upgrade pip uv
 RUN git clone --depth 1 https://github.com/sgl-project/sglang-omni.git /opt/sglang-omni \
     && cd /opt/sglang-omni \
     && uv venv .venv -p 3.12 \
-    && UV_PROJECT_ENVIRONMENT=/opt/sglang-omni/.venv uv sync --no-dev --extra s2pro
+    && UV_PROJECT_ENVIRONMENT=/opt/sglang-omni/.venv uv sync --no-dev
 
 COPY app /workspace/app
 COPY config /workspace/config
